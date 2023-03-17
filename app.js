@@ -104,6 +104,10 @@ app.use(function (req, res, next) {
     res.status(err.status || 500);
     console.log('没有捕获的异常....');
     res.setHeader('Content-Type', 'text/html');
+    res.send({
+      state: 'fali',
+      msg: '未知错误'
+    })
     // res.render(path.join(__dirname, 'public/index.html'));
   });
   reqDomain.run(next);
