@@ -8,12 +8,12 @@ var conf = require('../conf/db');
 var pool = mysql.createPool(conf.mysql);
 var jsonWebToken = require('jsonwebtoken');
 const CONSTANT = require('../common/constant');
+let lock = Promise.resolve();
 
-
+// 更新微信用户 openid uuid
 var updata = (req, res, next, data, uuid) => {
   // upDataUuid
-  console.log('updata', '------------------')
-  pool.getConnection(function(err, connection) {
+  pool.getConnection(function (err, connection) {
     var openid = data.openid
     var session_key = data.session_key
     if (err) {
@@ -22,7 +22,7 @@ var updata = (req, res, next, data, uuid) => {
         msg: err
       })
     }
-    connection.query(sql.upDataUuid(openid, uuid), function(err, result) {
+    connection.query(sql.upDataUuid(openid, uuid), function (err, result) {
       if (err) {
         logger.error(err);
         connection.release();
@@ -36,11 +36,10 @@ var updata = (req, res, next, data, uuid) => {
     })
   })
 }
-
+// 新建微信用户 openid uuid
 var add = (req, res, next, data, uuid) => {
   // upDataUuid
-  console.log('add', '------------------')
-  pool.getConnection(function(err, connection) {
+  pool.getConnection(function (err, connection) {
     var openid = data.openid
     var session_key = data.session_key
     if (err) {
@@ -49,7 +48,7 @@ var add = (req, res, next, data, uuid) => {
         msg: err
       })
     }
-    connection.query(sql.addData(openid, uuid), function(err, result) {
+    connection.query(sql.addData(openid, uuid), function (err, result) {
       if (err) {
         logger.error(err);
         connection.release();
@@ -63,26 +62,104 @@ var add = (req, res, next, data, uuid) => {
     })
   })
 }
+// 查询手机号是否已被使用
+var queryMobile = (req, res, next, openid, callback) => {
+  const obj = req.body
+  pool.getConnection((err, connection) => {
+    if (err) {
+      res.json({
+        state: 'fail',
+        msg: err
+      })
+    }
+    connection.query(sql.queryMobile(obj.mobile), function (err, result) {
+      if (err) {
+        logger.error(err);
+      }
+      if (result.length > 0) {
+        // lock = Promise.resolve();
 
+        res.send({
+          state: 'fail',
+          msg: '手机号已被使用'
+        })
+        callback(null, 'queryMobile: fail')
+      } else {
+        addUserInfo(req, res, next, openid, callback)
+      }
+      connection.release()
+    })
+  })
+}
+
+var addUserInfo = (req, res, next, openid, callback) => {
+  var obj = req.body
+  pool.getConnection(function (err, connection) {
+    connection.query(sql.addUserInfo(openid, obj.userName, obj.mobile), function (err, result) {
+      if (err) {
+        logger.error(err);
+        connection.release();
+        return common.jsonWrite(res, ret);
+      }
+      common.jsonWrite(res, {
+        state: 'ok',
+        msg: '绑定成功'
+      });
+      callback(null, 'ok')
+      connection.release();
+    })
+  })
+}
+/* ================================================================== */
+
+var bindUserInfoQueryOne = (req, res, next, authorization, callback) => {
+  const obj = req.body
+  const openid = jsonWebToken.decode(authorization.split(' ')[1], CONSTANT.SECRET_KEY)
+  pool.getConnection((err, connection) => {
+    if (err) {
+      res.json({
+        state: 'fail',
+        msg: err
+      })
+    }
+    connection.query(sql.queryUserName(obj.userName), function (err, result) {
+      if (err) {
+        logger.error(err);
+      }
+      if (result.length > 0) {
+        res.send({
+          state: 'fail',
+          msg: '用户名已存在'
+        })
+        callback(null, 'bindUserInfoQueryOne: fail')
+      } else {
+        queryMobile(req, res, next, openid.uid, callback)
+      }
+      connection.release()
+    })
+  })
+}
+
+
+
+/* ================================================================== */
 module.exports = {
   // 查询openid用户是否存在
-  openidJwtUuid (req, res, next, data) {
-    console.log(req.body, '----')
-    var openid = data.openid
-    var session_key = data.session_key
-    pool.getConnection(function(err, connection) {
+  openidJwtUuid(req, res, next, data) {
+    const openid = data.openid
+    // const session_key = data.session_key
+    pool.getConnection(function (err, connection) {
       if (err) {
         res.json({
           state: 'fail',
           msg: err
         })
       }
-      connection.query(sql.queryOpenid(openid), function(err, result) {
+      connection.query(sql.queryOpenid(openid), function (err, result) {
         if (err) {
           logger.error(err);
         }
-        console.log(result, '-----')
-        var uuid = jsonWebToken.sign({
+        const uuid = jsonWebToken.sign({
           uid: openid
         }, CONSTANT.SECRET_KEY, {
           expiresIn: 60 * 60 * 24 * 30
@@ -96,5 +173,55 @@ module.exports = {
         connection.release();
       })
     })
+  },
+  // 获取绑定的用户信息
+  getUserInfo(req, res, next, authorization) {
+    // 解密 获取获取openid
+    const openid = jsonWebToken.decode(authorization.split(' ')[1], CONSTANT.SECRET_KEY)
+    pool.getConnection((err, connection) => {
+      if (err) {
+        res.json({
+          state: 'fail',
+          msg: err
+        })
+      }
+      connection.query(sql.queryUserInfoOpenid(openid), function (err, result) {
+        if (err) {
+          logger.error(err);
+        }
+        if (result.length > 0) {
+          res.send({
+            state: 'ok',
+            obj: result[0]
+          })
+        } else {
+          res.send({
+            state: 'fail',
+            obj: '暂未绑定用户信息'
+          })
+        }
+        connection.release()
+      })
+    })
+  },
+  // 验证用户，通过则创建
+  async bindUserInfoQuery(req, res, next, authorization) {
+    await lock;
+    lock = new Promise(resolve => {
+      // 在 Promise 的回调函数中执行异步操作
+      bindUserInfoQueryOne(req, res, next, authorization, (err, result) => {
+        if (err) {
+          // 异步操作出错，释放锁并抛出错误
+          lock = Promise.resolve();
+          resolve(err)
+        } else {
+          // 异步操作成功，释放锁并继续执行下一个中间件
+          resolve()
+          lock = Promise.resolve();
+          // next();
+          console.log('异步操作成功', result)
+        }
+      });
+    });
   }
 }

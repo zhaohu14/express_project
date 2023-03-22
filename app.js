@@ -22,7 +22,7 @@ var videoRouter = require('./routes/video');
 var examRouter = require('./routes/exam');
 var appVersionRouter = require('./routes/appVersion');
 var systemInfoRouter = require('./routes/systemInfo');
-var wxApiRouter = require('./routes/wxLogin');
+var wxApiRouter = require('./routes/wxApi');
 
 var app = express();
 require('express-ws')(app);
@@ -103,8 +103,8 @@ app.use(function (req, res, next) {
   reqDomain.on('error', function (err) {
     res.status(err.status || 500);
     console.log('没有捕获的异常....');
-    res.setHeader('Content-Type', 'text/html');
-    res.send({
+    // res.setHeader('Content-Type', 'text/html');
+    res.json({
       state: 'fali',
       msg: '未知错误'
     })
@@ -162,10 +162,15 @@ app.use(function (err, req, res, next) {
   console.log('error...');
   // res.setHeader('Content-Type', 'text/html');
   // res.render(path.join(__dirname, 'public/index.html'));
-  res.send({
-    state: 'fail',
-    msg: err.message
-  })
+  let state = 'fail'
+  if (err.message === 'invalid token') {
+    err.message = '授权已过期，请重新授权'
+    state = 'ExpiredToken'
+  }
+  // res.send({
+  //   state: state,
+  //   msg: err.message
+  // })
 });
 
 app.listen(3001, () => console.log('Successfully! express app listening on port 3001...'));
