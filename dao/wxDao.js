@@ -83,9 +83,9 @@ var queryMobile = (req, res, next, openid, callback) => {
           state: 'fail',
           msg: '手机号已被使用'
         })
-        callback(null, 'queryMobile: fail')
+        requestListDelete0()
       } else {
-        addUserInfo(req, res, next, openid, callback)
+        addUserInfo(req, res, next, openid)
       }
       connection.release()
     })
@@ -105,14 +105,18 @@ var addUserInfo = (req, res, next, openid, callback) => {
         state: 'ok',
         msg: '绑定成功'
       });
-      callback(null, 'ok')
+      requestListDelete0()
       connection.release();
     })
   })
 }
 /* ================================================================== */
-
-var bindUserInfoQueryOne = (req, res, next, authorization, callback) => {
+// 创建递归
+var creatDG = () => {
+  let req = requestList[0].req
+  let res = requestList[0].res
+  let next = requestList[0].next
+  let authorization = requestList[0].authorization
   const obj = req.body
   const openid = jsonWebToken.decode(authorization.split(' ')[1], CONSTANT.SECRET_KEY)
   pool.getConnection((err, connection) => {
@@ -121,6 +125,8 @@ var bindUserInfoQueryOne = (req, res, next, authorization, callback) => {
         state: 'fail',
         msg: err
       })
+      requestListDelete0()
+      return
     }
     connection.query(sql.queryUserName(obj.userName), function (err, result) {
       if (err) {
@@ -131,18 +137,33 @@ var bindUserInfoQueryOne = (req, res, next, authorization, callback) => {
           state: 'fail',
           msg: '用户名已存在'
         })
-        callback(null, 'bindUserInfoQueryOne: fail')
+        requestListDelete0()
       } else {
-        queryMobile(req, res, next, openid.uid, callback)
+        queryMobile(req, res, next, openid.uid)
       }
       connection.release()
     })
   })
 }
+// 递归循环条件
+var requestListDelete0 = () => {
+  if (requestList.length === 0) {
+    return workIng = false
+  }
+  if (requestList.length > 0) {
+    requestList.splice(0, 1)
+    if (requestList.length === 0) {
+      return workIng = false
+    } 
+    creatDG()
+  }
+}
 
 
 
 /* ================================================================== */
+let requestList = []
+let workIng = false
 module.exports = {
   // 查询openid用户是否存在
   openidJwtUuid(req, res, next, data) {
@@ -178,6 +199,7 @@ module.exports = {
   getUserInfo(req, res, next, authorization) {
     // 解密 获取获取openid
     const openid = jsonWebToken.decode(authorization.split(' ')[1], CONSTANT.SECRET_KEY)
+    console.log(openid, ':' , sql.queryUserInfoOpenid(openid))
     pool.getConnection((err, connection) => {
       if (err) {
         res.json({
@@ -185,14 +207,19 @@ module.exports = {
           msg: err
         })
       }
-      connection.query(sql.queryUserInfoOpenid(openid), function (err, result) {
+      connection.query(sql.queryUserInfoOpenid(openid.uid), function (err, result) {
         if (err) {
           logger.error(err);
         }
         if (result.length > 0) {
           res.send({
             state: 'ok',
-            obj: result[0]
+            obj: {
+              userName: result[0].userName,
+              patId: result[0].patId,
+              mobile: result[0].mobile,
+              grade: result[0].grade
+            }
           })
         } else {
           res.send({
@@ -205,23 +232,38 @@ module.exports = {
     })
   },
   // 验证用户，通过则创建
-  async bindUserInfoQuery(req, res, next, authorization) {
-    await lock;
-    lock = new Promise(resolve => {
-      // 在 Promise 的回调函数中执行异步操作
-      bindUserInfoQueryOne(req, res, next, authorization, (err, result) => {
-        if (err) {
-          // 异步操作出错，释放锁并抛出错误
-          lock = Promise.resolve();
-          resolve(err)
-        } else {
-          // 异步操作成功，释放锁并继续执行下一个中间件
-          resolve()
-          lock = Promise.resolve();
-          // next();
-          console.log('异步操作成功', result)
-        }
-      });
-    });
+  // bindUserInfoQuery(req, res, next, authorization) {
+  //   const obj = req.body
+  //   const openid = jsonWebToken.decode(authorization.split(' ')[1], CONSTANT.SECRET_KEY)
+  //   pool.getConnection((err, connection) => {
+  //     if (err) {
+  //       res.json({
+  //         state: 'fail',
+  //         msg: err
+  //       })
+  //     }
+  //     connection.query(sql.queryUserName(obj.userName), function (err, result) {
+  //       if (err) {
+  //         logger.error(err);
+  //       }
+  //       if (result.length > 0) {
+  //         res.send({
+  //           state: 'fail',
+  //           msg: '用户名已存在'
+  //         })
+  //       } else {
+  //         queryMobile(req, res, next, openid.uid)
+  //       }
+  //       connection.release()
+  //     })
+  //   })
+  // }
+  bindUserInfoQuery(req, res, next, authorization) {
+    requestList.push({ req, res, next, authorization })
+    if (workIng) {
+      return
+    }
+    workIng = true
+    creatDG()
   }
 }

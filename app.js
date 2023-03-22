@@ -167,10 +167,10 @@ app.use(function (err, req, res, next) {
     err.message = '授权已过期，请重新授权'
     state = 'ExpiredToken'
   }
-  // res.send({
-  //   state: state,
-  //   msg: err.message
-  // })
+  res.send({
+    state: state,
+    msg: err.message
+  })
 });
 
 app.listen(3001, () => console.log('Successfully! express app listening on port 3001...'));
