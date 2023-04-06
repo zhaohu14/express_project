@@ -8,7 +8,6 @@ var conf = require('../conf/db');
 var pool = mysql.createPool(conf.mysql);
 var jsonWebToken = require('jsonwebtoken');
 const CONSTANT = require('../common/constant');
-let lock = Promise.resolve();
 
 // 更新微信用户 openid uuid
 var updata = (req, res, next, data, uuid) => {
@@ -199,7 +198,6 @@ module.exports = {
   getUserInfo(req, res, next, authorization) {
     // 解密 获取获取openid
     const openid = jsonWebToken.decode(authorization.split(' ')[1], CONSTANT.SECRET_KEY)
-    console.log(openid, ':' , sql.queryUserInfoOpenid(openid))
     pool.getConnection((err, connection) => {
       if (err) {
         res.json({

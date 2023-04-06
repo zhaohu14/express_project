@@ -23,6 +23,8 @@ var examRouter = require('./routes/exam');
 var appVersionRouter = require('./routes/appVersion');
 var systemInfoRouter = require('./routes/systemInfo');
 var wxApiRouter = require('./routes/wxApi');
+var articleApiRouter = require('./routes/articleApi');
+var chatGPTRouter = require('./routes/chatGPT');
 
 var app = express();
 require('express-ws')(app);
@@ -123,6 +125,8 @@ app.use(expressJWT({
     '/appVersion/upload',
     '/appVersion/download',
     '/wxapi/wxLogin',
+    '/articleApe/getAllArticle',
+    '/chatGptApi',
     /^\/public\/.*/,
     /^\/static\/.*/,
     /^\/user_disk\/.*/,
@@ -139,6 +143,9 @@ app.use('/exam', examRouter);
 app.use('/appVersion', appVersionRouter);
 app.use('/systemInfo', systemInfoRouter);
 app.use('/wxapi', wxApiRouter);
+app.use('/articleApi', articleApiRouter)
+app.use('/chatGptApi', chatGPTRouter)
+
 // wxApi
 
 // catch 404 and forward to error handler
